@@ -1,4 +1,5 @@
-"""Choose a real embedding provider (API or local) and implement this contract."""
+"""Local multilingual embedding adapter using Sentence Transformers."""
+import math
 from typing import Protocol
 
 
@@ -16,14 +17,59 @@ class Embedder(Protocol):
 
 
 class MyEmbedder:
-    """TODO: implement a provider adapter; do not silently fall back to mock vectors."""
+    """Load a local Sentence Transformers model for document and query vectors."""
 
     def __init__(self, model_name: str) -> None:
+        if not model_name.strip():
+            raise ValueError("model_name must not be empty")
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise RuntimeError(
+                "Sentence Transformers is not installed; install starter/requirements.txt"
+            ) from exc
+
         self.model_name = model_name
-        raise NotImplementedError("TODO: initialize real embedder and dimensions")
+        self._model = SentenceTransformer(model_name)
+        dimensions = self._model.get_embedding_dimension()
+        if not dimensions:
+            raise RuntimeError(f"Could not determine embedding size for {model_name}")
+        self.dimensions = int(dimensions)
+
+    def _embed(self, texts: list[str]) -> list[list[float]]:
+        if any(not text.strip() for text in texts):
+            raise ValueError("Texts must not be empty")
+        if not texts:
+            return []
+
+        encoded = self._model.encode(
+            texts,
+            batch_size=32,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        vectors = encoded.tolist()
+        if len(vectors) != len(texts):
+            raise RuntimeError(
+                f"Embedding model returned {len(vectors)} vectors for {len(texts)} texts"
+            )
+        for vector in vectors:
+            if len(vector) != self.dimensions:
+                raise RuntimeError(
+                    f"Embedding model returned {len(vector)} dimensions; "
+                    f"expected {self.dimensions}"
+                )
+            if not all(math.isfinite(float(value)) for value in vector):
+                raise RuntimeError("Embedding model returned a non-finite value")
+        return [[float(value) for value in vector] for vector in vectors]
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        raise NotImplementedError("TODO: embed_documents")
+        return self._embed(texts)
 
     def embed_query(self, question: str) -> list[float]:
-        raise NotImplementedError("TODO: embed_query")
+        vectors = self._embed([question])
+        return vectors[0]
+
+    def embed_queries(self, questions: list[str]) -> list[list[float]]:
+        return self._embed(questions)

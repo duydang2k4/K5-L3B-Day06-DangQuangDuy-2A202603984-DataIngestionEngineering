@@ -1,6 +1,6 @@
 # Starter · PostgreSQL + pgvector
 
-Bộ khởi động **tùy chọn** cho lab cá nhân. Docker Compose tạo PostgreSQL + pgvector local; các file trong `src/` là **khung pseudocode có TODO**, chưa đọc tài liệu, tạo embedding, lưu vector hay chạy benchmark. Bạn cần tự hiện thực. Vẫn có thể chọn Qdrant, Chroma hoặc vector store tương đương theo [GUIDE.md](../GUIDE.md).
+Bộ khởi động **tùy chọn** cho lab cá nhân. Docker Compose tạo PostgreSQL + pgvector local; `src/` chứa pipeline Python đọc PDF/DOCX, tạo embedding local, lưu/tìm vector và chạy benchmark. Vẫn có thể chọn Qdrant, Chroma hoặc vector store tương đương theo [GUIDE.md](../GUIDE.md).
 
 ## Cấu trúc
 
@@ -12,13 +12,13 @@ starter/
 ├── .env.example           # cấu hình mẫu; copy thành .env
 ├── scripts/check_setup.py # kiểm tra kết nối và extension (đã chạy được)
 ├── src/
-│   ├── models.py          # cấu trúc dữ liệu mẫu
-│   ├── ingestion.py       # TODO: đọc / chuẩn hóa tài liệu
-│   ├── chunking.py        # TODO: chia chunk
-│   ├── embeddings.py      # TODO: chọn model API hoặc local
-│   ├── store.py           # TODO: lưu vector, metadata và filter
-│   ├── evaluation.py      # TODO: chấm truy xuất, lưu trace
-│   └── run.py             # TODO: kết nối các bước thành pipeline
+│   ├── models.py          # hợp đồng DocumentPage / Chunk
+│   ├── ingestion.py       # đọc PDF/DOCX, chuẩn hóa và giữ trang nguồn
+│   ├── chunking.py        # fixed-size và paragraph chunking
+│   ├── embeddings.py      # local Sentence Transformers adapter
+│   ├── store.py           # pgvector upsert, cosine search và metadata filter
+│   ├── evaluation.py      # Hit@1, Evidence Hit@3 và trace metrics
+│   └── run.py             # orchestration, manual-review samples và results
 ├── data/                  # bạn tự chuẩn bị corpus được phép sử dụng
 └── results/               # lưu kết quả của bạn
 ```
@@ -50,16 +50,16 @@ Dừng container nhưng giữ dữ liệu:
 docker compose -p day6_student_starter stop
 ```
 
-## 2. Chọn embedding model
+## 2. Embedding model
 
-Điền key tương ứng trong `.env` nếu dùng OpenRouter, OpenAI hoặc Gemini; **không commit `.env`**. Model local không cần API key. `requirements.txt` chỉ có dependencies cơ bản: tự cài SDK hoặc thư viện local phù hợp với model bạn chọn và ghi lại version/lệnh cài trong báo cáo. Ghi tên model và số chiều; dùng cùng model cho toàn bộ chiến lược và vector query tương thích vector document.
+Pipeline dùng model local [`Horizon-Labs/multilingual-embedding-small`](https://huggingface.co/Horizon-Labs/multilingual-embedding-small), tạo vector chuẩn hóa 1024 chiều. Không cần API key; lần chạy đầu tải weights từ Hugging Face và cần đủ RAM/VRAM. Đặt `EMBEDDING_MODEL` trong `.env` để chọn một model Sentence Transformers khác. Dùng cùng model cho toàn bộ chiến lược và vector query tương thích vector document.
 
-## 3. Hoàn thiện pipeline
+## 3. Chạy pipeline
 
-1. Đặt corpus vào `data/` hoặc cung cấp manifest/hướng dẫn truy cập. Đọc [GUIDE.md](../GUIDE.md) về **30 trang nội dung**, quyền dữ liệu và metadata.
-2. Hoàn thiện từng hàm TODO trong `src/`. Lưu ID tài liệu, nguồn, trang/vị trí và ít nhất một trường filter có ích.
-3. Xây ít nhất ba cấu hình; ví dụ A fixed-size, B theo đoạn, C như B nhưng có filter. Cần cùng corpus, model và benchmark; nạp lại không nhân đôi và xử lý chunk cũ khi dữ liệu đổi.
-4. Tự viết ít nhất 20 câu hỏi kèm evidence, tách dev/test trước khi thử theo [BENCHMARK.md](../BENCHMARK.md). Lưu trace top-3 và báo cáo đủ năm tiêu chí.
-5. Sau khi hoàn thiện, chạy `python -m src.run` từ thư mục `starter/`. Trước khi làm TODO, lệnh này **chủ động báo `NotImplementedError`**.
+1. Đặt corpus được phép sử dụng vào `data/` và giữ nguồn/trang cùng metadata có ích cho filter.
+2. Tạo benchmark JSON theo định dạng và quy tắc trong [BENCHMARK.md](../BENCHMARK.md).
+3. Từ thư mục `starter/`, kích hoạt `.venv` và cài dependencies bằng `python -m pip install -r requirements.txt`.
+4. Khởi động PostgreSQL + pgvector và điền `DATABASE_URL` trong `.env`.
+5. Chạy `python -m src.run`. Pipeline tạo ba chiến lược A (fixed-size), B (theo paragraph), C (B + metadata filter) và lưu trace top-3, metric cùng mẫu chấm thủ công để trống vào `results/benchmark_results.json`.
 
-Lưu code, cấu hình, kết quả và lệnh chạy để người chấm tái lập; không commit key, dữ liệu mật hoặc dữ liệu không có quyền chia sẻ.
+Khi dùng DOCX, bộ nạp giữ dấu trang đã kết xuất trong tài liệu. Nếu benchmark evidence không khớp chính xác với text corpus, pipeline lưu cảnh báo trong kết quả để bạn kiểm tra phiên bản/trang; không tự sửa nhãn gold. Lưu code, cấu hình, kết quả và lệnh chạy để người chấm tái lập; không commit key, dữ liệu mật hoặc dữ liệu không có quyền chia sẻ.
